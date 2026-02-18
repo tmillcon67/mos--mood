@@ -1,11 +1,9 @@
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-import { NextRequest, NextResponse } from "next/server";
+import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+
+type ApiError = { error: string };
+type ApiSuccess = Record<string, unknown>;
 
 function clean(value?: string) {
   if (!value) return "";
@@ -35,7 +33,7 @@ function createAdminClient() {
   return { client, error: null as string | null };
 }
 
-async function getAuthenticatedUser(req: NextRequest) {
+async function getAuthenticatedUser(req: NextApiRequest) {
   const { url, anonKey } = readSupabaseConfig();
   if (!url) {
     return { user: null, error: "Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL", status: 500 };
@@ -45,17 +43,16 @@ async function getAuthenticatedUser(req: NextRequest) {
   }
 
   try {
-    const cookieStore = cookies();
     const ssrClient = createServerClient(url, anonKey, {
       cookies: {
         get(name: string) {
-          return cookieStore.get(name)?.value;
+          return req.cookies?.[name];
         },
-        set(name: string, value: string, options: Record<string, unknown>) {
-          cookieStore.set({ name, value, ...options });
+        set() {
+          // Token refresh cookie writes are ignored in this pages API handler.
         },
-        remove(name: string, options: Record<string, unknown>) {
-          cookieStore.set({ name, value: "", ...options });
+        remove() {
+          // Token refresh cookie removal is ignored in this pages API handler.
         }
       }
     });
@@ -65,8 +62,8 @@ async function getAuthenticatedUser(req: NextRequest) {
       return { user: cookieUserData.user, error: null, status: 200 };
     }
 
-    const auth = req.headers.get("authorization");
-    if (!auth?.startsWith("Bearer ")) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
       return {
         user: null,
         error: cookieUserError?.message || "Missing authentication. No valid session cookie or bearer token.",
@@ -79,7 +76,7 @@ async function getAuthenticatedUser(req: NextRequest) {
       return { user: null, error: adminClientError || "Supabase server client is not configured", status: 500 };
     }
 
-    const token = auth.replace("Bearer ", "").trim();
+    const token = authHeader.replace("Bearer ", "").trim();
     const { data, error } = await adminClient.auth.getUser(token);
     if (error || !data.user) {
       return { user: null, error: error?.message || "Invalid token", status: 401 };
@@ -92,49 +89,42 @@ async function getAuthenticatedUser(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse<ApiError | ApiSuccess>) {
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.setHeader("Allow", "GET, POST");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
   const { user, error: userError, status } = await getAuthenticatedUser(req);
   if (!user) {
-    return NextResponse.json({ error: userError }, { status: status || 401 });
+    return res.status(status || 401).json({ error: userError || "Unauthorized" });
   }
 
   const { client: supabaseAdmin, error: clientError } = createAdminClient();
   if (!supabaseAdmin) {
-    return NextResponse.json({ error: clientError || "Supabase server client is not configured" }, { status: 500 });
+    return res.status(500).json({ error: clientError || "Supabase server client is not configured" });
   }
 
-  const body = await req.json();
-  const mood = body?.mood;
-  const note = body?.note;
+  if (req.method === "POST") {
+    const mood = req.body?.mood;
+    const note = req.body?.note;
 
-  if (!Number.isInteger(mood) || mood < 1 || mood > 10) {
-    return NextResponse.json({ error: "Mood must be an integer between 1 and 10" }, { status: 400 });
-  }
+    if (!Number.isInteger(mood) || mood < 1 || mood > 10) {
+      return res.status(400).json({ error: "Mood must be an integer between 1 and 10" });
+    }
 
-  // Never trust user_id from client input; ownership comes from authenticated session.
-  const { data, error } = await supabaseAdmin
-    .from("checkins")
-    .insert({ user_id: user.id, mood, note: note || null })
-    .select("id, mood, note, checkin_at")
-    .single();
+    const { data, error } = await supabaseAdmin
+      .from("checkins")
+      .insert({ user_id: user.id, mood, note: note || null })
+      .select("id, mood, note, checkin_at")
+      .single();
 
-  if (error) {
-    console.error(`POST /api/checkins insert failed: ${error.message}`);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+    if (error) {
+      console.error(`POST /api/checkins insert failed: ${error.message}`);
+      return res.status(500).json({ error: error.message });
+    }
 
-  return NextResponse.json({ checkin: data }, { status: 201 });
-}
-
-export async function GET(req: NextRequest) {
-  const { user, error: userError, status } = await getAuthenticatedUser(req);
-  if (!user) {
-    return NextResponse.json({ error: userError }, { status: status || 401 });
-  }
-
-  const { client: supabaseAdmin, error: clientError } = createAdminClient();
-  if (!supabaseAdmin) {
-    return NextResponse.json({ error: clientError || "Supabase server client is not configured" }, { status: 500 });
+    return res.status(201).json({ checkin: data });
   }
 
   const { data, error } = await supabaseAdmin
@@ -145,8 +135,8 @@ export async function GET(req: NextRequest) {
 
   if (error) {
     console.error(`GET /api/checkins query failed: ${error.message}`);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return res.status(500).json({ error: error.message });
   }
 
-  return NextResponse.json({ checkins: data }, { status: 200 });
+  return res.status(200).json({ checkins: data });
 }
