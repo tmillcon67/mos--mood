@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendDailyQuoteEmail, sendMoodReminderEmail } from "@/lib/email";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { getSupabaseAdminClient } from "@/lib/supabase-server";
+
+export const dynamic = "force-dynamic";
 
 function isAuthorized(req: NextRequest) {
   const apiKey = req.headers.get("x-api-key");
@@ -13,6 +15,10 @@ export async function POST(req: NextRequest) {
   }
 
   const { type, to, userId } = await req.json();
+  const { client: supabaseAdmin, error: clientError } = getSupabaseAdminClient();
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: clientError || "Supabase server client is not configured" }, { status: 500 });
+  }
 
   if (!["daily_quote", "mood_reminder"].includes(type)) {
     return NextResponse.json({ error: "Invalid type" }, { status: 400 });

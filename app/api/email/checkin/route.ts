@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromAuthHeader } from "@/lib/auth";
 import { sendMoodReminderEmail } from "@/lib/email";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
-  const { user, error: userError } = await getUserFromAuthHeader(req);
+  const { user, error: userError, status } = await getUserFromAuthHeader(req);
   if (!user) {
     console.error(`POST /api/email/checkin auth failed: ${userError}`);
-    return NextResponse.json({ error: userError }, { status: 401 });
+    return NextResponse.json({ error: userError }, { status: status || 401 });
   }
 
   if (!user.email) {

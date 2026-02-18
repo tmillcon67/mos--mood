@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSSRClient } from "@/lib/supabase-ssr";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -11,7 +13,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(authFailedRedirect);
   }
 
-  const supabase = createSSRClient();
+  let supabase;
+  try {
+    supabase = createSSRClient();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to initialize Supabase auth client";
+    console.error(`Auth callback failed: ${message}`);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {

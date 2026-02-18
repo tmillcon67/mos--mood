@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromAuthHeader } from "@/lib/auth";
 import { sendDailyQuoteEmail } from "@/lib/email";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { getSupabaseAdminClient } from "@/lib/supabase-server";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const { user, error: userError } = await getUserFromAuthHeader(req);
+  const { user, error: userError, status } = await getUserFromAuthHeader(req);
   if (!user) {
     console.error(`POST /api/email/quote auth failed: ${userError}`);
-    return NextResponse.json({ error: userError }, { status: 401 });
+    return NextResponse.json({ error: userError }, { status: status || 401 });
+  }
+
+  const { client: supabaseAdmin, error: clientError } = getSupabaseAdminClient();
+  if (!supabaseAdmin) {
+    console.error(`POST /api/email/quote config failed: ${clientError}`);
+    return NextResponse.json({ error: clientError || "Supabase server client is not configured" }, { status: 500 });
   }
 
   if (!user.email) {

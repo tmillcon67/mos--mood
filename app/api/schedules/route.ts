@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromAuthHeader } from "@/lib/auth";
-import { supabaseAdmin } from "@/lib/supabase-server";
+import { getSupabaseAdminClient } from "@/lib/supabase-server";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const { user, error: userError } = await getUserFromAuthHeader(req);
+  const { user, error: userError, status } = await getUserFromAuthHeader(req);
   if (!user) {
-    return NextResponse.json({ error: userError }, { status: 401 });
+    return NextResponse.json({ error: userError }, { status: status || 401 });
+  }
+
+  const { client: supabaseAdmin, error: clientError } = getSupabaseAdminClient();
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: clientError || "Supabase server client is not configured" }, { status: 500 });
   }
 
   const { reminderTime, timezone, emailEnabled, quoteEnabled } = await req.json();
