@@ -11,13 +11,16 @@ Next.js app for daily mood tracking with Supabase magic-link auth, check-in hist
   - `schedules`
   - `quotes`
   - `quote_log`
+  - `notification_tokens`
 - API routes:
   - `POST /api/checkins`
   - `GET /api/checkins`
   - `POST /api/schedules`
+  - `POST /api/email/checkin` (manual reminder trigger)
+  - `POST /api/email/quote` (manual quote trigger + quote_log insert)
   - `POST /api/notifications/email` (daily Roman quote or mood reminder)
 - Email sending with Resend
-- SQL schema + row-level security policies in `db/schema.sql`
+- SQL schema + phased row-level security migrations in `db/migrations`
 - No SMS or push notifications (intentionally omitted)
 
 ## Tech stack
@@ -42,7 +45,6 @@ cp .env.example .env.local
 
 3. Configure Supabase:
 - Create a Supabase project.
-- In Supabase SQL Editor, run `db/schema.sql`.
 - In Supabase Auth settings, set site URL to `http://localhost:3000`.
 - Add `http://localhost:3000/auth/confirm` as an auth redirect URL.
 
@@ -82,11 +84,49 @@ Body options:
 }
 ```
 
+## Manual email testing (no cron)
+
+- `POST /api/email/checkin`: sends a reminder email to the authenticated user's email.
+- `POST /api/email/quote`: picks a random active quote, sends it to the authenticated user, then inserts a `quote_log` row.
+- Temporary testing buttons are available in `/settings` to trigger both endpoints.
+
 ## API auth pattern for checkins/schedules
 
-For user-authenticated routes, pass the Supabase access token:
+The app uses Supabase session cookies (set by `/auth/confirm`) for API authentication.
+Bearer token fallback is supported server-side, but not required for browser usage.
 
-`Authorization: Bearer <access_token>`
+## RLS rollout (safe)
+
+Run migrations in Supabase SQL Editor in this order:
+
+1. Phase 1 (`checkins` only):
+
+```sql
+-- paste file contents:
+-- db/migrations/20260217_001_checkins_rls.sql
+```
+
+2. Validate checkins:
+- Login and save an entry on `/today`.
+- Confirm users only read/write their own check-ins.
+
+3. Phase 2 (remaining tables and quotes read-only):
+
+```sql
+-- paste file contents:
+-- db/migrations/20260217_002_phase2_rls.sql
+```
+
+4. Refresh PostgREST schema cache:
+
+```sql
+select pg_notify('pgrst', 'reload schema');
+```
+
+Notes:
+- `quotes` is read-only for authenticated users in Phase 2.
+- No client insert/update/delete policy is created for `quotes`.
+- In app code, `checkins.user_id` is always derived from authenticated session in `/api/checkins`.
 
 ## Prepare for GitHub
 

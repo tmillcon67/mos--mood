@@ -48,19 +48,10 @@ export default function TodayPage() {
     e.preventDefault();
     setStatus("Saving...");
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-
     const res = await fetch("/api/checkins", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({ mood, note })
     });
@@ -68,6 +59,9 @@ export default function TodayPage() {
     if (!res.ok) {
       const err = await res.json();
       setStatus(err.error || "Failed to save check-in");
+      if (res.status === 401) {
+        router.push("/login");
+      }
       return;
     }
 

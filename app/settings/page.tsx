@@ -14,6 +14,9 @@ export default function SettingsPage() {
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [quoteEnabled, setQuoteEnabled] = useState(true);
   const [status, setStatus] = useState("");
+  const [emailTestStatus, setEmailTestStatus] = useState("");
+  const [sendingCheckinTest, setSendingCheckinTest] = useState(false);
+  const [sendingQuoteTest, setSendingQuoteTest] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -32,19 +35,10 @@ export default function SettingsPage() {
     e.preventDefault();
     setStatus("Saving...");
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-
     const res = await fetch("/api/schedules", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({ reminderTime, timezone, emailEnabled, quoteEnabled })
     });
@@ -52,6 +46,9 @@ export default function SettingsPage() {
     if (!res.ok) {
       const err = await res.json();
       setStatus(err.error || "Failed to save settings");
+      if (res.status === 401) {
+        router.push("/login");
+      }
       return;
     }
 
@@ -61,6 +58,56 @@ export default function SettingsPage() {
   const signOut = async () => {
     await supabase.auth.signOut();
     router.push("/login");
+  };
+
+  const sendCheckinTestEmail = async () => {
+    setSendingCheckinTest(true);
+    setEmailTestStatus("Sending check-in reminder test email...");
+
+    try {
+      const res = await fetch("/api/email/checkin", { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setEmailTestStatus(data.error || "Failed to send check-in reminder test email");
+        if (res.status === 401) {
+          router.push("/login");
+        }
+        return;
+      }
+
+      setEmailTestStatus("Check-in reminder test email sent.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to send check-in reminder test email";
+      setEmailTestStatus(message);
+    } finally {
+      setSendingCheckinTest(false);
+    }
+  };
+
+  const sendQuoteTestEmail = async () => {
+    setSendingQuoteTest(true);
+    setEmailTestStatus("Sending quote test email...");
+
+    try {
+      const res = await fetch("/api/email/quote", { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setEmailTestStatus(data.error || "Failed to send quote test email");
+        if (res.status === 401) {
+          router.push("/login");
+        }
+        return;
+      }
+
+      setEmailTestStatus("Quote test email sent.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to send quote test email";
+      setEmailTestStatus(message);
+    } finally {
+      setSendingQuoteTest(false);
+    }
   };
 
   return (
@@ -121,6 +168,25 @@ export default function SettingsPage() {
           <button type="submit">Save settings</button>
         </form>
         {status ? <p className="muted">{status}</p> : null}
+
+        <div className="field" style={{ marginTop: "1rem" }}>
+          <button type="button" onClick={sendCheckinTestEmail} disabled={sendingCheckinTest || sendingQuoteTest}>
+            {sendingCheckinTest ? "Sending..." : "Send check-in reminder test email"}
+          </button>
+        </div>
+
+        <div className="field">
+          <button
+            type="button"
+            onClick={sendQuoteTestEmail}
+            className="secondary"
+            disabled={sendingCheckinTest || sendingQuoteTest}
+          >
+            {sendingQuoteTest ? "Sending..." : "Send quote test email"}
+          </button>
+        </div>
+
+        {emailTestStatus ? <p className="muted">{emailTestStatus}</p> : null}
 
         <button className="secondary" onClick={signOut} style={{ marginTop: "1rem" }}>
           Sign out
