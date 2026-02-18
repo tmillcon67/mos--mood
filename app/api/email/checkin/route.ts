@@ -3,6 +3,7 @@ import { getUserFromAuthHeader } from "@/lib/auth";
 import { sendMoodReminderEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
   const { user, error: userError, status } = await getUserFromAuthHeader(req);
