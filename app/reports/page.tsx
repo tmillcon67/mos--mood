@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppNav from "@/components/AppNav";
+import { createClient } from "@/lib/supabase-browser";
 
 type Checkin = {
   mood: number;
@@ -10,12 +11,24 @@ type Checkin = {
 };
 
 export default function ReportsPage() {
+  const supabase = createClient();
   const router = useRouter();
   const [items, setItems] = useState<Checkin[]>([]);
 
   useEffect(() => {
     async function load() {
-      const res = await fetch("/api/checkins");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        router.push("/login");
+        return;
+      }
+
+      const res = await fetch("/api/checkins", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
 
       if (res.ok) {
         const data = await res.json();
@@ -26,7 +39,7 @@ export default function ReportsPage() {
     }
 
     load();
-  }, [router]);
+  }, [router, supabase]);
 
   const avgMood = useMemo(() => {
     if (!items.length) return 0;

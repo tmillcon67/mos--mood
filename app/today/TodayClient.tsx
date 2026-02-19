@@ -48,10 +48,19 @@ export default function TodayClient() {
     e.preventDefault();
     setStatus("Saving...");
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setStatus("Session expired. Please log in again.");
+      router.push("/login");
+      return;
+    }
+
     const res = await fetch("/api/checkins", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({ mood, note })
     });
