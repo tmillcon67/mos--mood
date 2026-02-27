@@ -14,7 +14,14 @@ export default function LoginPage() {
     setMessage("");
 
     const supabase = createClient();
-    const redirectTo = `${window.location.origin}/auth/confirm`;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+    const redirectTo = `${siteUrl}/auth/confirm`;
+
+    if (!siteUrl) {
+      setMessage("Missing NEXT_PUBLIC_SITE_URL configuration.");
+      setLoading(false);
+      return;
+    }
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
